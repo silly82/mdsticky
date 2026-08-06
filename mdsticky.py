@@ -710,7 +710,10 @@ class App:
             return
 
         found = []
-        for path in mdsticky_core.scan_markdown_files(folder):
+        for found_path in mdsticky_core.scan_markdown_files(folder):
+            # Configuration JSON requires string keys; the core deliberately
+            # returns Path objects for filesystem-safe operations.
+            path = os.fspath(found_path)
             try:
                 note = mdtodo.parse_note(path)
             except OSError:

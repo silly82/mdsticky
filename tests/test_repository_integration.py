@@ -7,6 +7,7 @@ from mdsticky_core import (
     contains_conflict_markers,
     load_text,
     save_with_merge,
+    scan_markdown_files,
 )
 
 
@@ -22,6 +23,15 @@ class RepositoryIntegrationTests(unittest.TestCase):
 
     def test_markdown_and_markdown_extension_get_distinct_bases(self):
         self.assertNotEqual(base_path_for("note.md"), base_path_for("note.markdown"))
+
+    def test_scanned_paths_can_be_used_as_json_object_keys(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            note = root / "nd_test.md"
+            note.write_text("text\n", encoding="utf-8")
+            scanned = scan_markdown_files(root)
+            self.assertTrue(all(isinstance(path, Path) for path in scanned))
+            self.assertTrue(all(isinstance(str(path), str) for path in scanned))
 
     def test_save_with_merge_creates_base_and_keeps_external_changes(self):
         with tempfile.TemporaryDirectory() as tmp:
