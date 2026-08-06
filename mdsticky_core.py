@@ -57,14 +57,15 @@ class MergeResult:
 
 
 def scan_markdown_files(root: str | Path) -> list[Path]:
-    """Return every Markdown document below *root*, excluding mdsticky bases."""
+    """Return ``nd_*.md`` documents below *root*, excluding base snapshots."""
     root = Path(root)
     return sorted(
         (
             path
             for path in root.rglob("*")
             if path.is_file()
-            and path.suffix.lower() in {".md", ".markdown"}
+            and path.suffix.lower() == ".md"
+            and path.name.lower().startswith("nd_")
             and not path.name.endswith(".mdsticky-base")
             and ".sync-conflict-" not in path.name
         ),
@@ -232,7 +233,7 @@ __all__ = [
     "unified_diff",
 ]
 
-__version__ = "0.0.2"
+__version__ = "0.0.3"
 
 
 if __name__ == "__main__":

@@ -12,17 +12,18 @@ from mdsticky_core import (
 
 
 class CoreFoundationTests(unittest.TestCase):
-    def test_scans_all_markdown_files_but_not_base_files(self):
+    def test_scans_only_markdown_files_starting_with_nd_while_excluding_base_files(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            (root / "note.md").write_text("plain text\n", encoding="utf-8")
-            (root / "note.mdsticky-base").write_text("base\n", encoding="utf-8")
+            (root / "nd_note.md").write_text("plain text\n", encoding="utf-8")
+            (root / "other.md").write_text("not a mdsticky note\n", encoding="utf-8")
+            (root / "nd_note.mdsticky-base").write_text("base\n", encoding="utf-8")
             (root / "sub").mkdir()
-            (root / "sub" / "nested.markdown").write_text("- TODO task\n", encoding="utf-8")
+            (root / "sub" / "nd_nested.md").write_text("- TODO task\n", encoding="utf-8")
 
             self.assertEqual(
                 scan_markdown_files(root),
-                [root / "note.md", root / "sub" / "nested.markdown"],
+                [root / "nd_note.md", root / "sub" / "nd_nested.md"],
             )
 
     def test_detects_all_standard_conflict_marker_lines(self):

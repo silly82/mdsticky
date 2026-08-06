@@ -1,7 +1,10 @@
-# mdsticky 0.0.2
+# mdsticky 0.0.3
 
 Plattformübergreifende TODOs als Markdown-Dateien im org-Stil, plus ein
 Windows-Viewer im Sticky-Notes-Look. Eine `.md`-Datei ist eine Haftnotiz.
+
+Als mdsticky-Notizen werden ausschließlich Dateien berücksichtigt, deren Name
+mit `nd_` beginnt und auf `.md` endet, zum Beispiel `nd_test.md`.
 
 - `mdtodo.py` — Parser und Writer, reine Standardbibliothek, auch als CLI nutzbar
 - `mdsticky.py` — der Viewer (tkinter, randlose Notizfenster)
