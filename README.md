@@ -1,10 +1,22 @@
-# mdsticky 0.0.4
+# mdsticky 0.0.5
 
 Plattformübergreifende TODOs als Markdown-Dateien im org-Stil, plus ein
 Windows-Viewer im Sticky-Notes-Look. Eine `.md`-Datei ist eine Haftnotiz.
 
-Als mdsticky-Notizen werden ausschließlich Dateien berücksichtigt, deren Name
-mit `nd_` beginnt und auf `.md` endet, zum Beispiel `nd_test.md`.
+6|Als mdsticky-Notizen werden ausschließlich Dateien berücksichtigt, deren Name
+7|mit `nd_` beginnt und auf `.md` endet, zum Beispiel `nd_test.md`.
+8|
+9|## Neuerungen in 0.0.5
+10|* In‑Place‑Markdown‑Editor direkt im Sticky‑Fenster (Umschalten mit ✎‑Button).
+11|* Drei‑Wege‑Merge beim Speichern, inklusive Konflikt‑Marker‑Anzeige.
+12|* Vollständige Testabdeckung des Editors (`tests/test_editor_workflow.py`).
+13|
+14|### Editor‑Integration
+15|Der **✎‑Button** in der Titelleiste schaltet das Fenster in einen In‑Place‑Markdown‑Editor.
+16|* **Umschalten**: Klick auf ✎ → Bearbeitungsmodus, erneut klicken (oder Strg S) → speichern und zurück zur Ansicht.
+17|* **Speichern**: `Strg S` startet das Drei‑Wege‑Merge (lokale Änderungen, Basis‑Snapshot, externe Änderungen).
+18|* **Abbrechen**: `Esc` verlässt den Editiermodus ohne zu speichern.
+19|* **Konflikte**: Bei Konflikten werden klassische Git‑ähnliche Marker (`<<<<<<< LOCAL` … `>>>>>>> REMOTE`) in die Datei geschrieben und das Feld bleibt im Editier‑Modus, damit du sie manuell lösen kannst.
 
 - `mdtodo.py` — Parser und Writer, reine Standardbibliothek, auch als CLI nutzbar
 - `mdsticky.py` — der Viewer (tkinter, randlose Notizfenster)
