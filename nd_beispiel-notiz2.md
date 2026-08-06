@@ -4,4 +4,10 @@ color: green
 ---
 
 ## Netzwerk
-- TODO Test
+<<<<<<< LOCAL
+- Test
+
+=======
+-  Test
+
+>>>>>>> EXTERNAL
