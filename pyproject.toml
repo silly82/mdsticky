@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mdsticky"
+version = "0.0.1"
+description = "Cross-platform Markdown sticky notes and task management"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Silvan"}]
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest>=8"]
+qt = ["PySide6>=6.6"]
+
+[project.scripts]
+mdsticky-core = "mdsticky_core:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
