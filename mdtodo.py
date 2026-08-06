@@ -530,8 +530,75 @@ def newnote_wizard(folder: str) -> str | None:
         return None
 
     path = create_note(folder, title, color or None, tasks)
-    print(f"\nAngelegt: {path}  ({len(tasks)} Punkte)")
+    print(f"\\nAngelegt: {path}  ({len(tasks)} Punkte)")
     return path
+
+
+def assist(folder: str) -> int:
+    """Interaktiver Assistent zum Anlegen einer neuen Notiz.
+
+    Der Assistent führt den Nutzer Schritt‑für‑Schritt durch die Eingabe von
+    Titel, optionaler Farbe und einer beliebigen Anzahl von Aufgaben. Für
+    jede Aufgabe kann ein geplantes Datum (SCHEDULED) angegeben werden. Die
+    erzeugte Datei entspricht dem Format, das ``newnote_wizard`` verwendet,
+    enthält jedoch bei Bedarf automatisch eine ``SCHEDULED: <YYYY‑MM‑DD>``
+    Zeile unter der jeweiligen Aufgabe.
+    """
+    print(f"Assistent: Neue Notiz im Ordner {os.path.abspath(folder)}\n")
+    try:
+        title = input("Titel: ").strip()
+        if not title:
+            print("Abgebrochen – kein Titel.")
+            return 1
+
+        # Farbe auswählen (wie bei newnote_wizard)
+        color = ""
+        while True:
+            col = input(f"Farbe [{'/'.join(COLORS)}] (Enter = ohne): ").strip().lower()
+            if not col:
+                break
+            if col in COLORS:
+                color = col
+                break
+            print(f"  Unbekannt. Möglich: {', '.join(COLORS)}")
+
+        # Aufgaben erfassen
+        tasks: list[str] = []
+        idx = 1
+        while True:
+            line = input(f"{idx:>2}> (Leer = Ende): ").strip()
+            if not line:
+                break
+            # optionales Datum abfragen
+            date_input = input("   Datum (YYYY-MM-DD) oder leer für keine Planung: ").strip()
+            if date_input:
+                # Validierung – einfache ISO‑Datum‑Prüfung
+                try:
+                    dt.date.fromisoformat(date_input)
+                except Exception:
+                    print("   Ungültiges Datum – wird ignoriert.")
+                    date_input = ""
+            # Baue die eigentliche Aufgabenzeile zusammen
+            task_line = line
+            if not any(task_line.upper().startswith(k) for k in ALL_KEYWORDS):
+                task_line = f"TODO {task_line}"
+            tasks.append(f"- {task_line}")
+            if date_input:
+                tasks.append(f"  SCHEDULED: <{date_input}>")
+            idx += 1
+
+        if not tasks:
+            print("Keine Aufgaben angegeben – Abbruch.")
+            return 1
+
+        # Erzeuge die Datei über ``create_note`` – wir übergeben bereits die
+        # kompletten Zeilen, sodass kein zusätzlicher Aufruf nötig ist.
+        path = create_note(folder, title, color or None, tasks)
+        print(f"\nAngelegt: {path}  ({len(tasks)} Zeilen)" )
+        return 0
+    except (EOFError, KeyboardInterrupt):
+        print("\nAbgebrochen.")
+        return 1
 
 
 # --------------------------------------------------------------------------
