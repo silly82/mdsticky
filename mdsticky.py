@@ -16,12 +16,14 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import filedialog, messagebox
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import mdtodo  # noqa: E402
+import mdsticky_core  # noqa: E402
 
 APP_NAME = "mdsticky"
 POLL_MS = 1500
@@ -134,6 +136,7 @@ class NoteWindow(tk.Toplevel):
         self.path = path
         self.note: mdtodo.Note | None = None
         self.mtime = -1.0
+        self.conflicted = False
         self.entry_visible = False
         self._drag = (0, 0)
         self._wrap_target: list[tuple[tk.Label, int]] = []
@@ -344,6 +347,11 @@ class NoteWindow(tk.Toplevel):
         if not force and mtime == self.mtime:
             return
         self.mtime = mtime
+        text = mdsticky_core.load_text(self.path)
+        self.conflicted = mdsticky_core.contains_conflict_markers(text)
+        base_path = mdsticky_core.base_path_for(self.path)
+        if not self.conflicted and not base_path.exists():
+            mdsticky_core.write_base_snapshot(self.path, text)
         self.note = mdtodo.parse_note(self.path)
         self.apply_palette(palette(self.note.color))
         self.render()
@@ -376,7 +384,14 @@ class NoteWindow(tk.Toplevel):
         pal, f = self.pal, self.app.fonts
         tasks = self.note.tasks
         open_count = len(self.note.open_tasks)
-        self.title_label.configure(text=f"  {self.note.title}   {open_count}/{len(tasks)}")
+        conflict_title = "   KONFLIKT" if self.conflicted else ""
+        self.title_label.configure(text=f"  {self.note.title}   {open_count}/{len(tasks)}{conflict_title}")
+
+        if self.conflicted:
+            tk.Label(self.body, text="Konflikt erkannt — bitte Marker im Editor entfernen.",
+                     bg="#F4C7C3", fg="#7A1710", font=f["body"], anchor="w",
+                     justify="left", wraplength=max(150, self.winfo_width() - 24)).pack(
+                         fill="x", padx=10, pady=10)
 
         shown = self.note.display_order(include_done=not self.hide_done)
         if not shown:
@@ -481,8 +496,24 @@ class NoteWindow(tk.Toplevel):
         self.clipboard_append(text)
 
     def on_toggle(self, task: mdtodo.Task) -> None:
+        if self.conflicted:
+            messagebox.showwarning(APP_NAME, "Diese Notiz enthält ungelöste Konfliktmarker.")
+            return
         try:
-            mdtodo.toggle_task(self.path, task.line_no)
+            base_path = mdsticky_core.base_path_for(self.path)
+            base = mdsticky_core.load_text(base_path)
+            if not base:
+                base = mdsticky_core.load_text(self.path)
+            with tempfile.TemporaryDirectory(prefix="mdsticky-toggle-") as temp_dir:
+                temp_path = os.path.join(temp_dir, os.path.basename(self.path))
+                with open(temp_path, "w", encoding="utf-8", newline="") as handle:
+                    handle.write(mdsticky_core.load_text(self.path))
+                if not mdtodo.toggle_task(temp_path, task.line_no):
+                    return
+                local = mdsticky_core.load_text(temp_path)
+            result = mdsticky_core.save_with_merge(self.path, base, local)
+            if result.has_conflicts:
+                self.conflicted = True
         except OSError as exc:
             messagebox.showerror(APP_NAME, f"Datei konnte nicht geschrieben werden:\n{exc}")
             return
@@ -679,12 +710,10 @@ class App:
             return
 
         found = []
-        for path in mdtodo.scan_folder(folder):
+        for path in mdsticky_core.scan_markdown_files(folder):
             try:
                 note = mdtodo.parse_note(path)
             except OSError:
-                continue
-            if not note.tasks:
                 continue
             found.append(path)
             self.summaries[path] = (len(note.open_tasks), len(note.tasks), note.color or "yellow")

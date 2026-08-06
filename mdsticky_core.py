@@ -10,6 +10,46 @@ from pathlib import Path
 CONFLICT_MARKERS = ("<<<<<<<", "=======", ">>>>>>>")
 
 
+def base_path_for(path: str | Path) -> Path:
+    """Return the synchronized base-snapshot path for a Markdown file."""
+    path = Path(path)
+    return path.with_name(path.name + ".mdsticky-base")
+
+
+def load_text(path: str | Path) -> str:
+    """Read UTF-8 text, returning an empty string only for a missing file."""
+    try:
+        return Path(path).read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return ""
+
+
+def _write_text(path: Path, text: str) -> None:
+    temporary = path.with_name(path.name + ".mdsticky.tmp")
+    temporary.write_text(text, encoding="utf-8", newline="")
+    temporary.replace(path)
+
+
+def write_base_snapshot(path: str | Path, text: str) -> None:
+    """Atomically update the synchronized base snapshot for *path*."""
+    _write_text(base_path_for(path), text)
+
+
+def save_with_merge(path: str | Path, base: str, local: str) -> MergeResult:
+    """Save *local* against the shared base, merging a newer external file.
+
+    A conflicted result is written to the Markdown file but never promoted to
+    the base snapshot. The next save therefore still has the original base.
+    """
+    path = Path(path)
+    external = load_text(path)
+    result = three_way_merge(base, local, external)
+    _write_text(path, result.text)
+    if not result.has_conflicts:
+        write_base_snapshot(path, result.text)
+    return result
+
+
 @dataclass(frozen=True)
 class MergeResult:
     text: str
@@ -33,7 +73,15 @@ def scan_markdown_files(root: str | Path) -> list[Path]:
 
 
 def contains_conflict_markers(text: str) -> bool:
-    return any(line.startswith(marker) for line in text.splitlines() for marker in CONFLICT_MARKERS)
+    state = 0
+    for line in text.splitlines():
+        if state == 0 and line.startswith("<<<<<<< "):
+            state = 1
+        elif state == 1 and line == "=======":
+            state = 2
+        elif state == 2 and line.startswith(">>>>>>> "):
+            return True
+    return False
 
 
 def _changes(base: list[str], other: list[str]) -> list[tuple[int, int, list[str]]]:
@@ -172,15 +220,19 @@ def main() -> int:
 
 
 __all__ = [
+    "base_path_for",
     "CONFLICT_MARKERS",
     "MergeResult",
     "contains_conflict_markers",
+    "load_text",
     "scan_markdown_files",
+    "save_with_merge",
+    "write_base_snapshot",
     "three_way_merge",
     "unified_diff",
 ]
 
-__version__ = "0.0.1"
+__version__ = "0.0.2"
 
 
 if __name__ == "__main__":
