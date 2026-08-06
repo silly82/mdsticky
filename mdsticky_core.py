@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import difflib
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,72 @@ def _changes(base: list[str], other: list[str]) -> list[tuple[int, int, list[str
     ]
 
 
+def _overlaps(left: tuple[int, int, list[str]], right: tuple[int, int, list[str]]) -> bool:
+    ls, le, _ = left
+    rs, re, _ = right
+    # Treat insertions at a replacement boundary as overlapping. This is
+    # deliberately conservative: losing either user's edit is worse than a
+    # manual conflict.
+    if le == ls and re == rs:
+        return ls == rs
+    if le == ls:
+        return rs <= ls <= re
+    if re == rs:
+        return ls <= rs <= le
+    return max(ls, rs) < min(le, re)
+
+
+def _overlap_group(
+    local_changes: list[tuple[int, int, list[str]]],
+    external_changes: list[tuple[int, int, list[str]]],
+) -> list[tuple[int, int, list[str], list[str]]]:
+    pairs = [
+        (local, external)
+        for local in local_changes
+        for external in external_changes
+        if _overlaps(local, external) and local[2] != external[2]
+    ]
+    groups: list[list[tuple[int, int, list[str], list[str]]]] = []
+    for local, external in pairs:
+        item = (min(local[0], external[0]), max(local[1], external[1]), local[2], external[2])
+        merged = [item]
+        remaining: list[list[tuple[int, int, list[str], list[str]]]] = []
+        for group in groups:
+            if any(max(item[0], other[0]) <= min(item[1], other[1]) for other in group):
+                merged.extend(group)
+            else:
+                remaining.append(group)
+        remaining.append(merged)
+        groups = remaining
+
+    result = []
+    for group in groups:
+        start = min(item[0] for item in group)
+        end = max(item[1] for item in group)
+        result.append((start, end))
+    return sorted(result, key=lambda item: item[0])
+
+
+def _side_region(
+    base_lines: list[str],
+    changes: list[tuple[int, int, list[str]]],
+    start: int,
+    end: int,
+) -> list[str]:
+    output: list[str] = []
+    cursor = start
+    for change_start, change_end, replacement in sorted(changes, key=lambda item: item[0]):
+        if change_end < start or change_start > end:
+            continue
+        change_start = max(change_start, start)
+        change_end = min(change_end, end)
+        output.extend(base_lines[cursor:change_start])
+        output.extend(replacement)
+        cursor = change_end
+    output.extend(base_lines[cursor:end])
+    return output
+
+
 def three_way_merge(base: str, local: str, external: str) -> MergeResult:
     """Merge independent line changes and mark overlapping changes."""
     if local == external:
@@ -58,23 +125,17 @@ def three_way_merge(base: str, local: str, external: str) -> MergeResult:
     external_lines = external.splitlines(keepends=True)
     local_changes = _changes(base_lines, local_lines)
     external_changes = _changes(base_lines, external_lines)
-
-    conflicts: list[tuple[int, int, list[str], list[str]]] = []
-    for ls, le, lnew in local_changes:
-        for es, ee, enew in external_changes:
-            if max(ls, es) < min(le, ee) or (ls == le == es == ee):
-                if lnew != enew:
-                    conflicts.append((min(ls, es), max(le, ee), lnew, enew))
+    conflicts = _overlap_group(local_changes, external_changes)
 
     if conflicts:
         output: list[str] = []
         cursor = 0
-        for start, end, lnew, enew in conflicts:
+        for start, end in conflicts:
             output.extend(base_lines[cursor:start])
             output.append("<<<<<<< LOCAL\n")
-            output.extend(lnew)
+            output.extend(_side_region(base_lines, local_changes, start, end))
             output.append("=======\n")
-            output.extend(enew)
+            output.extend(_side_region(base_lines, external_changes, start, end))
             output.append(">>>>>>> EXTERNAL\n")
             cursor = end
         output.extend(base_lines[cursor:])
@@ -100,8 +161,6 @@ def unified_diff(original: str, current: str, original_name: str = "original", c
 
 
 def main() -> int:
-    import argparse
-
     parser = argparse.ArgumentParser(description="mdsticky core utilities")
     parser.add_argument("--version", action="version", version=__version__)
     parser.add_argument("folder", nargs="?", help="folder to scan")
@@ -126,3 +185,11 @@ __version__ = "0.0.1"
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+
+def _version_for_argparse() -> str:
+    return __version__
+
+
+# argparse resolves this global at runtime after module initialization.
+main.__annotations__ = {"return": int}

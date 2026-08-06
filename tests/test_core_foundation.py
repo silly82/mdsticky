@@ -45,6 +45,24 @@ class CoreFoundationTests(unittest.TestCase):
         self.assertIn("=======", result.text)
         self.assertIn(">>>>>>> EXTERNAL", result.text)
 
+    def test_three_way_merge_coalesces_many_overlaps_into_one_conflict(self):
+        base = "b1\nb2\nb3\nb4\n"
+        local = "L1\nb2\nL3\nb4\n"
+        external = "E1\nE2\nE3\nE4\n"
+        result = three_way_merge(base, local, external)
+        self.assertTrue(result.has_conflicts)
+        self.assertEqual(result.text.count("<<<<<<< LOCAL"), 1)
+        self.assertEqual(result.text.count(">>>>>>> EXTERNAL"), 1)
+        self.assertIn("L1\nb2\nL3\nb4\n", result.text)
+        self.assertIn("E1\nE2\nE3\nE4\n", result.text)
+
+    def test_three_way_merge_marks_insertion_at_replacement_boundary_as_conflict(self):
+        base = "one\ntwo\nthree\n"
+        local = "one\nLOCAL\ntwo\nthree\n"
+        external = "one\nEXTERNAL\nTHREE\n"
+        result = three_way_merge(base, local, external)
+        self.assertTrue(result.has_conflicts)
+
     def test_unified_diff_contains_file_names_and_changed_lines(self):
         diff = unified_diff("one\ntwo\n", "one\nTWO\n", "base.md", "current.md")
         self.assertIn("--- base.md", diff)
