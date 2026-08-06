@@ -137,6 +137,9 @@ class NoteWindow(tk.Toplevel):
         self.note: mdtodo.Note | None = None
         self.mtime = -1.0
         self.conflicted = False
+        self.editing = False
+        self.editor_base = ""
+        self.external_changed = False
         self.entry_visible = False
         self._drag = (0, 0)
         self._wrap_target: list[tuple[tk.Label, int]] = []
@@ -180,6 +183,7 @@ class NoteWindow(tk.Toplevel):
 
         self.close_btn = self._head_button("\u2715", self.hide_note, "Notiz ausblenden")
         self.menu_btn = self._head_button("\u22EF", self.show_menu, "Menue")
+        self.edit_btn = self._head_button("\u270e", self.toggle_editor, "Markdown bearbeiten")
         self.add_btn = self._head_button("\uFF0B", self.toggle_entry, "Neue Aufgabe")
 
         for widget in (self.head, self.title_label, self.grip_label):
@@ -201,6 +205,13 @@ class NoteWindow(tk.Toplevel):
             target.bind("<MouseWheel>", self._on_wheel)
             target.bind("<Button-4>", self._on_wheel)
             target.bind("<Button-5>", self._on_wheel)
+
+        self.editor = tk.Text(self, bg=self.pal["bg"], fg=self.pal["fg"],
+                              insertbackground=self.pal["fg"], relief="flat",
+                              wrap="none", undo=True, font=f["body"],
+                              padx=10, pady=10)
+        self.editor.bind("<Control-s>", self.save_editor)
+        self.editor.bind("<Escape>", lambda e: self.cancel_editor())
 
         # Eingabe fuer neue Aufgaben
         self.entry_frame = tk.Frame(self, bg=self.pal["bg"])
@@ -293,6 +304,50 @@ class NoteWindow(tk.Toplevel):
         else:
             self.toggle_entry()
 
+    def toggle_editor(self) -> None:
+        if self.conflicted and not self.editing:
+            messagebox.showwarning(APP_NAME, "Diese Notiz enthält ungelöste Konfliktmarker.")
+            return
+        if self.editing:
+            self.save_editor()
+            return
+        current = mdsticky_core.load_text(self.path)
+        base_path = mdsticky_core.base_path_for(self.path)
+        self.editor_base = mdsticky_core.load_text(base_path) or current
+        self.editor.delete("1.0", "end")
+        self.editor.insert("1.0", current)
+        self.editing = True
+        self.external_changed = False
+        self.canvas.pack_forget()
+        self.entry_frame.pack_forget()
+        self.editor.pack(side="top", fill="both", expand=True)
+        self.edit_btn.configure(text="\u2714")
+        self.editor.focus_set()
+
+    def cancel_editor(self) -> None:
+        if not self.editing:
+            return
+        self.editing = False
+        self.editor.pack_forget()
+        self.canvas.pack(side="top", fill="both", expand=True)
+        self.edit_btn.configure(text="\u270e")
+        self.editor_base = ""
+
+    def save_editor(self, event=None) -> str:
+        if not self.editing:
+            return "break"
+        local = self.editor.get("1.0", "end-1c")
+        result = mdsticky_core.save_with_merge(self.path, self.editor_base, local)
+        if result.has_conflicts:
+            self.conflicted = True
+            self.editor.delete("1.0", "end")
+            self.editor.insert("1.0", result.text)
+            messagebox.showwarning(APP_NAME, "Konflikt erkannt. Bitte die Marker im Editor bearbeiten.")
+            return "break"
+        self.cancel_editor()
+        self.reload(force=True)
+        return "break"
+
     # -- Menue -------------------------------------------------------------
 
     def show_menu(self, event=None) -> None:
@@ -346,6 +401,9 @@ class NoteWindow(tk.Toplevel):
         mtime = os.path.getmtime(self.path)
         if not force and mtime == self.mtime:
             return
+        if self.editing and not force:
+            self.external_changed = True
+            return
         self.mtime = mtime
         text = mdsticky_core.load_text(self.path)
         self.conflicted = mdsticky_core.contains_conflict_markers(text)
@@ -367,7 +425,7 @@ class NoteWindow(tk.Toplevel):
         self.entry.configure(bg=pal["bg"], fg=pal["fg"], insertbackground=pal["fg"],
                              highlightbackground=pal["line"], highlightcolor=pal["mut"])
         self.title_label.configure(bg=pal["head"], fg=pal["fg"])
-        for btn in (self.grip_label, self.close_btn, self.menu_btn, self.add_btn):
+        for btn in (self.grip_label, self.close_btn, self.menu_btn, self.edit_btn, self.add_btn):
             btn.configure(bg=pal["head"], fg=pal["mut"])
 
     def render(self) -> None:
