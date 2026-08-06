@@ -534,16 +534,52 @@ def newnote_wizard(folder: str) -> str | None:
     return path
 
 
-def assist(folder: str) -> int:
-    """Interaktiver Assistent zum Anlegen einer neuen Notiz.
+def assist(target_path: str) -> int:
+    """Interaktiver Assistent zum Anlegen oder Ergänzen von Notizen.
 
-    Der Assistent führt den Nutzer Schritt‑für‑Schritt durch die Eingabe von
-    Titel, optionaler Farbe und einer beliebigen Anzahl von Aufgaben. Für
-    jede Aufgabe kann ein geplantes Datum (SCHEDULED) angegeben werden. Die
-    erzeugte Datei entspricht dem Format, das ``newnote_wizard`` verwendet,
-    enthält jedoch bei Bedarf automatisch eine ``SCHEDULED: <YYYY‑MM‑DD>``
-    Zeile unter der jeweiligen Aufgabe.
+    * **Ordner‐Pfad** – Erstellt eine neue Notiz (wie ``newnote_wizard``),
+      fragt nach Titel, optionaler Farbe und einer Reihe von Aufgaben.
+    * **Datei‑Pfad** – Fügt einer bestehenden Markdown‑Datei neue Aufgaben
+      hinzu. Der Assistent fragt nach einer Aufgabenbeschreibung und einem
+      optionalen Planungs‑Datum (``SCHEDULED``).
     """
+    # Wenn ``target_path`` eine existierende Datei ist, fügen wir eine einzelne
+    # Aufgabe zu dieser Notiz hinzu (Add‑Modus). Das optionale Datum wird in die
+    # gleiche Zeile eingebettet, sodass ``- TODO Aufgabe SCHEDULED: <2026‑08‑07>``
+    # entsteht, anstatt separate ``SCHEDULED``‑Zeilen zu erzeugen.
+    if os.path.isfile(target_path):
+        print(f"Assistent: Aufgabe zu '{target_path}' hinzufügen\n")
+        try:
+            line = input("Aufgabe: ").strip()
+            if not line:
+                print("Abgebrochen – keine Aufgabe.")
+                return 1
+            date_input = input("   Datum (YYYY-MM-DD) oder leer für keine Planung: ").strip()
+            if date_input:
+                try:
+                    dt.date.fromisoformat(date_input)
+                except Exception:
+                    print("   Ungültiges Datum – wird ignoriert.")
+                    date_input = ""
+            task_line = line
+            if not any(task_line.upper().startswith(k) for k in ALL_KEYWORDS):
+                task_line = f"TODO {task_line}"
+            if date_input:
+                task_line = f"{task_line} SCHEDULED: <{date_input}>"
+            add_task(target_path, task_line)
+            print("Aufgabe hinzugefügt.")
+            return 0
+        except (EOFError, KeyboardInterrupt):
+            print("\nAbgebrochen.")
+            return 1
+
+    # Andernfalls behandeln wir den Pfad als Verzeichnis (oder als Dateipfad, bei dem
+    # das übergeordnete Verzeichnis als Ziel verwendet wird) und erstellen eine neue Notiz.
+    folder = target_path
+    if os.path.splitext(target_path)[1].lower() in {".md", ".markdown"}:
+        # Der Aufruf enthielt einen Dateinamen – wir ignorieren die Datei selbst
+        # und legen die Notiz im übergeordneten Verzeichnis an.
+        folder = os.path.dirname(target_path) or "."
     print(f"Assistent: Neue Notiz im Ordner {os.path.abspath(folder)}\n")
     try:
         title = input("Titel: ").strip()
@@ -569,32 +605,48 @@ def assist(folder: str) -> int:
             line = input(f"{idx:>2}> (Leer = Ende): ").strip()
             if not line:
                 break
-            # optionales Datum abfragen
             date_input = input("   Datum (YYYY-MM-DD) oder leer für keine Planung: ").strip()
             if date_input:
-                # Validierung – einfache ISO‑Datum‑Prüfung
                 try:
                     dt.date.fromisoformat(date_input)
                 except Exception:
                     print("   Ungültiges Datum – wird ignoriert.")
                     date_input = ""
-            # Baue die eigentliche Aufgabenzeile zusammen
             task_line = line
             if not any(task_line.upper().startswith(k) for k in ALL_KEYWORDS):
                 task_line = f"TODO {task_line}"
-            tasks.append(f"- {task_line}")
+            # Embed the date in the same line if provided.
             if date_input:
-                tasks.append(f"  SCHEDULED: <{date_input}>")
+                task_line = f"{task_line} SCHEDULED: <{date_input}>"
+            tasks.append(f"- {task_line}")
             idx += 1
 
         if not tasks:
             print("Keine Aufgaben angegeben – Abbruch.")
             return 1
 
-        # Erzeuge die Datei über ``create_note`` – wir übergeben bereits die
-        # kompletten Zeilen, sodass kein zusätzlicher Aufruf nötig ist.
+        # ``create_note`` legt die Datei anhand des Titels an (z. B. "5.md").
+        # Wenn der Aufrufer jedoch einen konkreten Dateinamen (z. B.
+        # "nd_beispiel_notiz5.md") angegeben hat, soll diese verwendet werden.
+        # Wir prüfen, ob ``target_path`` eine nicht‑existierende *.md‑Datei war.
+        explicit_path = None
+        if os.path.splitext(target_path)[1].lower() in {".md", ".markdown"} and not os.path.isdir(target_path):
+            # ``target_path`` ist ein Dateiname, der noch nicht existiert.
+            explicit_path = os.path.abspath(target_path)
+
         path = create_note(folder, title, color or None, tasks)
-        print(f"\nAngelegt: {path}  ({len(tasks)} Zeilen)" )
+
+        # Wenn ein expliziter Zielpfad angegeben wurde, benennen wir die Datei
+        # um, sodass der gewünschte Name erhalten bleibt.
+        if explicit_path:
+            try:
+                os.replace(path, explicit_path)
+                path = explicit_path
+            except OSError as exc:
+                print(f"Fehler beim Umbenennen der Datei: {exc}")
+                # Weiter mit dem ursprünglich erstellten Pfad.
+
+        print(f"\nAngelegt: {path}  ({len(tasks)} Zeilen)")
         return 0
     except (EOFError, KeyboardInterrupt):
         print("\nAbgebrochen.")
@@ -648,6 +700,23 @@ def main(argv: list[str]) -> int:
             return 1
         print(path)
         return 0
+
+    # ----------------------------------------------------------------------
+    # Assist – interaktiver Assistent zum Anlegen einer Notiz (neu eingeführt).
+    # ----------------------------------------------------------------------
+    if cmd == "assist":
+        # ``assist`` kann ein Verzeichnis oder eine existierende Datei erhalten.
+        # Bei einem Dateipfad nutzen wir das übergeordnete Verzeichnis, weil
+        # die neue Notiz dort abgelegt werden soll.
+        if os.path.isdir(target):
+            folder = target
+        elif os.path.isfile(target):
+            folder = os.path.dirname(target)
+        else:
+            # Pfad existiert nicht – wir gehen davon aus, dass es ein neues
+            # Verzeichnis sein soll und versuchen, es anzulegen.
+            folder = target
+        return assist(folder)
 
     if cmd in ("list", "agenda"):
         paths = scan_folder(target) if os.path.isdir(target) else [target]

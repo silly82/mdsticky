@@ -1,4 +1,4 @@
-1|# mdsticky 0.1.2
+1|# mdsticky 0.1.3
 
 Plattformübergreifende TODOs als Markdown-Dateien im org-Stil, plus ein
 Windows-Viewer im Sticky-Notes-Look. Eine `.md`-Datei ist eine Haftnotiz.
